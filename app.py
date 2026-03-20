@@ -1,47 +1,44 @@
 import streamlit as st
-import pickle
 import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from imblearn.over_sampling import SMOTE
 
-# Load files
-model = pickle.load(open("model.pkl", "rb"))
-scaler = pickle.load(open("scaler.pkl", "rb"))
-columns = pickle.load(open("columns.pkl", "rb"))
+@st.cache_resource
+def load_model():
+    df = pd.read_csv("WA_Fn-UseC_-Telco-Customer-Churn.csv")
 
-st.title("📊 Customer Churn Prediction")
+    df.drop(columns=['customerID','gender','SeniorCitizen','Dependents','Partner'], inplace=True)
 
-# Inputs
-InternetService = st.selectbox("Internet Service", ["No", "DSL", "Fiber optic"])
-Contract = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
-tenure = st.number_input("Tenure", 0, 100)
-MonthlyCharges = st.number_input("Monthly Charges", 0.0)
-TotalCharges = st.number_input("Total Charges", 0.0)
-PhoneService = st.selectbox("Phone Service", ["Yes", "No"])
-PaperlessBilling = st.selectbox("Paperless Billing", ["Yes", "No"])
+    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+    df.dropna(subset=['TotalCharges'], inplace=True)
 
-# Prepare input
-input_data = {col: 0 for col in columns}
+    df = pd.get_dummies(df, columns=[
+        'DeviceProtection','PhoneService','MultipleLines','OnlineSecurity',
+        'OnlineBackup','TechSupport','StreamingTV','StreamingMovies',
+        'PaperlessBilling','PaymentMethod'
+    ], drop_first=True)
 
-input_data['InternetService'] = ["No","DSL","Fiber optic"].index(InternetService)
-input_data['Contract'] = ["Month-to-month","One year","Two year"].index(Contract)
-input_data['tenure'] = tenure
-input_data['MonthlyCharges'] = MonthlyCharges
-input_data['TotalCharges'] = TotalCharges
+    encode = OrdinalEncoder(categories=[
+        ['No','DSL','Fiber optic'],
+        ['Month-to-month','One year','Two year']
+    ])
+    df[['InternetService','Contract']] = encode.fit_transform(df[['InternetService','Contract']])
 
-if PhoneService == "Yes":
-    input_data['PhoneService_Yes'] = 1
+    df['Churn'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
 
-if PaperlessBilling == "Yes":
-    input_data['PaperlessBilling_Yes'] = 1
+    X = df.drop('Churn', axis=1)
+    y = df['Churn']
 
-input_df = pd.DataFrame([input_data])
-input_scaled = scaler.transform(input_df)
+    sm = SMOTE(random_state=42)
+    X_res, y_res = sm.fit_resample(X, y)
 
-# Prediction
-if st.button("Predict"):
-    pred = model.predict(input_scaled)[0]
-    prob = model.predict_proba(input_scaled)[0][1]
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_res)
 
-    if pred == 1:
-        st.error(f"❌ Customer will churn ({prob*100:.2f}%)")
-    else:
-        st.success(f"✅ Customer will not churn ({(1-prob)*100:.2f}%)")
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_scaled, y_res)
+
+    return model, scaler, X.columns
+
+model, scaler, columns = load_model()
