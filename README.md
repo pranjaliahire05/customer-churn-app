@@ -101,7 +101,7 @@ The application helps businesses identify customers at risk of churn and take pr
 
 ## 📧 Contact
 
-(Your Name)
-(Add your email or LinkedIn here)
+Pranjali Ahire
+pranjaliahire0502@gmail.com
 
 ---
